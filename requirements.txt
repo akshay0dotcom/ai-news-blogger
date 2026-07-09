@@ -1,1 +1,9 @@
+google-generativeai
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
+feedparser
+newspaper3k
 lxml_html_clean
+requests

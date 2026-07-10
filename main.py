@@ -33,13 +33,16 @@ def get_published_urls():
         return []
 
 def log_to_sheets(sheet_name, row_data):
-    service = build('sheets', 'v4', credentials=google_creds)
-    service.spreadsheets().values().append(
-        spreadsheetId=os.environ["SPREADSHEET_ID"],
-        range=f"{sheet_name}!A:C",
-        valueInputOption="USER_ENTERED",
-        body={'values': [row_data]}
-    ).execute()
+    try:
+        service = build('sheets', 'v4', credentials=google_creds)
+        service.spreadsheets().values().append(
+            spreadsheetId=os.environ["SPREADSHEET_ID"],
+            range=f"{sheet_name}!A:C",
+            valueInputOption="USER_ENTERED",
+            body={'values': [row_data]}
+        ).execute()
+    except Exception as e:
+        print(f"Spreadsheet logging failed: {e}")
 
 def get_unsplash_image(query):
     try:
@@ -62,7 +65,6 @@ def publish_to_blogger(title, html_content, labels):
 # ==========================================
 def process_news():
     print("Starting AI Bot Run...")
-    # Add as many RSS feeds here as you want!
     rss_feeds = [
         "https://techcrunch.com/feed/",
         "https://www.theverge.com/rss/index.xml",
@@ -88,20 +90,29 @@ def process_news():
                 full_text = article.text
                 
                 if len(full_text) < 500:
+                    print("Story text too short or scraper blocked. Skipping...")
                     continue 
                 
+                # Take a small 6-second breath to avoid hitting the 5-requests-per-minute limit
+                time.sleep(6)
+                
                 eval_prompt = f"Analyze this text: {full_text[:2000]}. Is it highly newsworthy and factual? Reply EXACTLY with APPROVE or SKIP."
-                if "SKIP" in gemini_model.generate_content(eval_prompt).text.strip().upper():
+                response = gemini_model.generate_content(eval_prompt)
+                
+                if "SKIP" in response.text.strip().upper():
+                    print("Gemini decided to SKIP this story.")
                     log_to_sheets("Logs", [str(datetime.now()), "Skipped", entry.title])
                     published_urls.append(article_url)
                     continue
                     
-                print("Story approved! Generating article...")
+                print("Story approved! Generating full article...")
+                time.sleep(6) # Breather before generation
+                
                 write_prompt = f"""
                 Write a 700+ word SEO-optimized news article based on this text: {full_text[:3000]}
                 Format strictly as valid HTML (no markdown blocks).
                 Include: An engaging <h1> title tag, Introduction, <h2> sections, a <ul> Key Takeaways list, and a Conclusion.
-                The very last line MUST be a single specific image search keyword wrapped in brackets like this: [cybersecurity]
+                The very last line MUST be a single specific image search keyword wrapped in brackets like this: [technology]
                 """
                 
                 article_html = gemini_model.generate_content(write_prompt).text.strip()
@@ -128,12 +139,14 @@ def process_news():
                 
                 log_to_sheets("Database", [title, article_url, str(datetime.now())])
                 log_to_sheets("Logs", [str(datetime.now()), "Published", live_url])
-                print("Successfully published one article. Run complete.")
-                return # Exits after publishing 1 article per 30-min run
+                print(f"Successfully published: {title}")
+                return # Stop after successfully publishing 1 article per cycle
                 
             except Exception as e:
                 print(f"Error processing {article_url}: {e}")
-                log_to_sheets("Logs", [str(datetime.now()), "Error", str(e)])
+                if "429" in str(e):
+                    print("Rate limit hit. Waiting 60 seconds before trying next feed...")
+                    time.sleep(60)
                 continue
 
 if __name__ == "__main__":

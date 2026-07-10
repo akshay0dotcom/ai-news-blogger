@@ -13,7 +13,7 @@ from googleapiclient.discovery import build
 # SETUP & AUTHENTICATION
 # ==========================================
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+gemini_model = genai.GenerativeModel('gemini-3.5-flash')
 
 creds_dict = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"])
 scopes = ['https://www.googleapis.com/auth/blogger', 'https://www.googleapis.com/auth/spreadsheets']
